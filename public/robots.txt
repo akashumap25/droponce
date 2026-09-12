@@ -1,0 +1,11 @@
+User-agent: *
+Disallow: /s/
+Disallow: /api/
+Disallow: /functions/
+
+# Prevent caching of ephemeral links
+User-agent: Googlebot
+Disallow: /s/
+
+User-agent: Bingbot
+Disallow: /s/

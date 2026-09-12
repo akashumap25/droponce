@@ -36,7 +36,6 @@ ALTER TABLE public.files ENABLE ROW LEVEL SECURITY;
 
 -- Anonymous users cannot directly query or tamper with files table;
 -- all operations are gated behind Edge Functions with service-role security.
--- Optional read policy for edge function / authenticated token verification
 CREATE POLICY "Deny direct public table access"
     ON public.files
     FOR ALL
@@ -45,6 +44,7 @@ CREATE POLICY "Deny direct public table access"
 
 -- Atomic Single-Use Download Function (Prevents Race Conditions)
 -- Executes an atomic UPDATE returning the file metadata only if active and not expired.
+-- Hardened with explicit search_path to prevent security definer escalation.
 CREATE OR REPLACE FUNCTION public.consume_one_time_file(lookup_hash TEXT)
 RETURNS TABLE (
     id UUID,
@@ -54,7 +54,9 @@ RETURNS TABLE (
     size_bytes BIGINT,
     is_one_time BOOLEAN,
     status TEXT
-) LANGUAGE plpgsql SECURITY DEFINER AS $$
+) LANGUAGE plpgsql SECURITY DEFINER 
+SET search_path = public
+AS $$
 BEGIN
     RETURN QUERY
     UPDATE public.files
@@ -76,8 +78,11 @@ END;
 $$;
 
 -- Function to calculate active usage for an anonymous session
+-- Hardened with explicit search_path.
 CREATE OR REPLACE FUNCTION public.get_session_active_bytes(check_session_id TEXT)
-RETURNS BIGINT LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS BIGINT LANGUAGE plpgsql SECURITY DEFINER 
+SET search_path = public
+AS $$
 DECLARE
     total_bytes BIGINT;
 BEGIN
@@ -93,11 +98,14 @@ END;
 $$;
 
 -- Stored procedure for scheduled cleanup of expired files
+-- Hardened with explicit search_path.
 CREATE OR REPLACE FUNCTION public.mark_expired_files()
 RETURNS TABLE (
     expired_id UUID,
     expired_storage_key TEXT
-) LANGUAGE plpgsql SECURITY DEFINER AS $$
+) LANGUAGE plpgsql SECURITY DEFINER 
+SET search_path = public
+AS $$
 BEGIN
     RETURN QUERY
     UPDATE public.files
@@ -107,3 +115,6 @@ BEGIN
     RETURNING files.id, files.storage_key;
 END;
 $$;
+
+-- Optional pg_cron automated schedule for Supabase (if pg_cron extension is enabled):
+-- SELECT cron.schedule('droponce_purge_expired', '*/15 * * * *', 'SELECT public.mark_expired_files();');
