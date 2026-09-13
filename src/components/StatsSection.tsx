@@ -3,7 +3,7 @@ import React from 'react';
 export const StatsSection: React.FC = () => {
   const stats = [
     {
-      value: '100 MB',
+      value: '50 MB',
       label: 'Maximum file size',
       subtext: 'High-speed encrypted transfer',
     },
@@ -18,9 +18,9 @@ export const StatsSection: React.FC = () => {
       subtext: '256-bit unguessable token',
     },
     {
-      value: '0 ACCOUNTS',
-      label: 'Required to start',
-      subtext: 'Anonymous & immediate',
+      value: 'INSTANT',
+      label: 'Ready to share',
+      subtext: 'Upload & get a link',
     },
   ];
 

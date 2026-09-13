@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { corsHeaders } from "../_shared/cors.ts";
-import { deleteR2Object } from "../_shared/r2.ts";
+import { deleteStorageFile } from "../_shared/storage.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -11,9 +11,11 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false },
+    });
 
-    // Call stored procedure to find and mark expired files
+    // Call stored procedure to find and mark expired files in the database
     const { data: expiredFiles, error } = await supabase.rpc("mark_expired_files");
 
     if (error) {
@@ -28,10 +30,10 @@ serve(async (req) => {
     if (expiredFiles && expiredFiles.length > 0) {
       for (const item of expiredFiles) {
         try {
-          await deleteR2Object(item.expired_storage_key);
+          await deleteStorageFile(item.expired_storage_key);
           deletedCount++;
         } catch (delErr) {
-          console.error(`Failed to delete R2 object ${item.expired_storage_key}:`, delErr);
+          console.error(`Failed to delete storage file ${item.expired_storage_key}:`, delErr);
         }
       }
     }

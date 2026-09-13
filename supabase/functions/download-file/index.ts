@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { corsHeaders } from "../_shared/cors.ts";
-import { createPresignedDownloadUrl, deleteR2Object } from "../_shared/r2.ts";
+import { createSignedDownloadUrl, deleteStorageFile } from "../_shared/storage.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -18,16 +18,18 @@ serve(async (req) => {
       });
     }
 
-    // Compute SHA-256 hash
+    // Compute SHA-256 hash of the raw token — look up only by hash, never by raw token
     const encoder = new TextEncoder();
     const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(token));
     const tokenHash = Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, "0")).join("");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false },
+    });
 
-    // Call atomic stored procedure to consume file and avoid race conditions
+    // Atomically consume the file — prevents race conditions on concurrent requests
     const { data, error } = await supabase.rpc("consume_one_time_file", {
       lookup_hash: tokenHash,
     });
@@ -41,20 +43,23 @@ serve(async (req) => {
 
     const file = data[0];
 
-    // Generate short-lived presigned GET URL for Cloudflare R2
-    const downloadUrl = await createPresignedDownloadUrl(file.storage_key, file.sanitized_filename);
+    // Generate short-lived signed download URL from Supabase Storage (60 seconds)
+    const downloadUrl = await createSignedDownloadUrl(
+      file.storage_key,
+      file.sanitized_filename,
+      60,
+    );
 
-    // If one-time file, schedule or delete R2 object
+    // For one-time files: delete from storage after 30s buffer so browser stream can start
     if (file.is_one_time) {
-      // Background delete after slight delay so download stream can start
       setTimeout(async () => {
         try {
-          await deleteR2Object(file.storage_key);
-          console.log(`Purged R2 object for one-time file: ${file.storage_key}`);
+          await deleteStorageFile(file.storage_key);
+          console.log(`Purged storage object for one-time file: ${file.storage_key}`);
         } catch (err) {
-          console.error("Failed to delete consumed R2 object:", err);
+          console.error("Failed to delete consumed storage file:", err);
         }
-      }, 30000); // 30s buffer for browser to establish stream
+      }, 30000);
     }
 
     return new Response(

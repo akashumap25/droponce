@@ -126,13 +126,57 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white flex flex-col selection:bg-[#00D6FF]/20 selection:text-[#00D6FF]">
+  <div className="relative min-h-screen text-white selection:bg-[#00D6FF]/20 selection:text-[#00D6FF]">
+
+    {/* =====================================================
+        FIXED GOOGLE FLOW BACKGROUND
+        Stays fixed while the page scrolls
+    ====================================================== */}
+    <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+
+      <video
+        className="absolute inset-0 w-full h-full object-cover"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        aria-hidden="true"
+      >
+        <source
+          src="\public\video\hero-background.mp4.mp4"
+          type="video/mp4"
+        />
+      </video>
+
+      {/* Cinematic dark overlay */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-black/80" />
+
+      {/* Subtle blue atmospheric glow */}
+      <div className="absolute inset-0 bg-[#00111A]/10" />
+
+    </div>
+
+
+    {/* =====================================================
+        WEBSITE CONTENT
+        Everything scrolls above the fixed video
+    ====================================================== */}
+    <div className="relative z-10 min-h-screen flex flex-col">
+
       <Navbar onStartUpload={handleResetUpload} />
 
       <main className="flex-1">
+
         {downloadToken ? (
-          <DownloadPage token={downloadToken} onGoHome={navigateToHome} />
+
+          <DownloadPage
+            token={downloadToken}
+            onGoHome={navigateToHome}
+          />
+
         ) : (
+
           <>
             <Hero
               uploadState={uploadState}
@@ -147,17 +191,26 @@ const MainContent: React.FC = () => {
             />
 
             <StorytellingSection />
+
             <SecuritySection />
+
             <StatsSection />
+
             <SupportedTypesSection />
+
             <FaqSection />
           </>
+
         )}
+
       </main>
 
       <Footer />
+
     </div>
-  );
+
+  </div>
+);
 };
 
 export function App() {

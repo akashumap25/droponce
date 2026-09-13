@@ -41,7 +41,7 @@ export class SupabaseFileService implements FileService {
     onProgress: (step: UploadStep, progress: number, message: string) => void
   ): Promise<UploadResult> {
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      throw new Error(`File exceeds the maximum allowed size of 100 MB.`);
+      throw new Error(`File exceeds the maximum allowed size of 50 MB.`);
     }
 
     onProgress('preparing', 15, 'Requesting secure upload authorization...');
@@ -67,9 +67,9 @@ export class SupabaseFileService implements FileService {
     const initData = await initRes.json();
     const { uploadUrl, token, storageKey, expiresAt } = initData;
 
-    onProgress('uploading', 40, 'Encrypting & streaming to private Cloudflare R2 vault...');
+    onProgress('uploading', 40, 'Uploading to encrypted private vault...');
 
-    // Upload directly to Cloudflare R2 via presigned PUT URL with XMLHttpRequest for fine progress
+    // Upload directly to Supabase Storage via signed upload URL using XMLHttpRequest for fine-grained progress
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', uploadUrl, true);

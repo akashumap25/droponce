@@ -155,7 +155,7 @@ export const UploadDropzone: React.FC<UploadDropzoneProps> = ({
           <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-white/60">
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.08]">
               <HardDrive className="w-3.5 h-3.5 text-[#00D6FF]" />
-              Up to 100 MB
+              Up to 50 MB
             </span>
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.08]">
               <Clock className="w-3.5 h-3.5 text-[#0050FF]" />

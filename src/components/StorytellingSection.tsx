@@ -127,17 +127,33 @@ export const StorytellingSection: React.FC = () => {
               <Share2 className="w-5 h-5" />
             </div>
 
-            {/* Orbiting destination nodes */}
-            <div className="absolute w-44 h-44 rounded-full border border-dashed border-white/10 animate-spin" style={{ animationDuration: '20s' }} />
-            <div className="absolute -top-6 -left-6 px-2.5 py-1 rounded-full bg-white/10 text-[10px] font-mono text-white/80">
-              WhatsApp
-            </div>
-            <div className="absolute -bottom-6 -right-6 px-2.5 py-1 rounded-full bg-white/10 text-[10px] font-mono text-white/80">
-              Slack / Teams
-            </div>
-            <div className="absolute -bottom-6 -left-6 px-2.5 py-1 rounded-full bg-white/10 text-[10px] font-mono text-white/80">
-              Direct Link
-            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+
+  {/* Orbit */}
+  <div
+    className="absolute w-44 h-44 rounded-full border border-dashed border-white/10 animate-spin"
+    style={{ animationDuration: '20s' }}
+  />
+
+  {/* Rotating nodes */}
+  <div
+    className="absolute w-44 h-44 animate-spin"
+    style={{ animationDuration: '20s' }}
+  >
+    <div className="absolute -top-2 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full bg-white/10 text-[10px] font-mono text-white/80 whitespace-nowrap">
+      WhatsApp
+    </div>
+
+    <div className="absolute bottom-0 right-0 px-2.5 py-1 rounded-full bg-white/10 text-[10px] font-mono text-white/80 whitespace-nowrap">
+      Slack / Teams
+    </div>
+
+    <div className="absolute bottom-0 left-0 px-2.5 py-1 rounded-full bg-white/10 text-[10px] font-mono text-white/80 whitespace-nowrap">
+      Direct Link
+    </div>
+  </div>
+
+</div>
           </div>
         </div>
       ),
