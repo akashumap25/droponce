@@ -25,17 +25,27 @@ export async function sha256Hex(message: string): Promise<string> {
 const SESSION_KEY = 'droponce_anon_session_id';
 
 export function getOrCreateSessionId(): string {
+  const createSecureSessionId = (): string => {
+    const buffer = new Uint8Array(16);
+    window.crypto.getRandomValues(buffer);
+    return Array.from(
+      buffer,
+      (byte) => byte.toString(16).padStart(2, '0'),
+    ).join('');
+  };
+
   try {
     let sessionId = localStorage.getItem(SESSION_KEY);
+
     if (!sessionId) {
-      const buffer = new Uint8Array(16);
-      window.crypto.getRandomValues(buffer);
-      sessionId = Array.from(buffer, b => b.toString(16).padStart(2, '0')).join('');
+      sessionId = createSecureSessionId();
       localStorage.setItem(SESSION_KEY, sessionId);
     }
+
     return sessionId;
   } catch {
-    // Fallback if localStorage is restricted
-    return 'anon_' + Math.random().toString(36).substring(2, 15);
+    // localStorage may be unavailable, but Web Crypto can still provide
+    // a cryptographically secure identifier.
+    return createSecureSessionId();
   }
 }
