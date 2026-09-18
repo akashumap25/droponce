@@ -23,7 +23,7 @@ export const SupportedTypesSection: React.FC = () => {
           Share any file. Anywhere.
         </h2>
         <p className="text-sm text-white/50">
-          DROPONCE handles raw binary streams up to 100 MB with zero conversion overhead.
+          DROPONCE handles raw binary streams up to 50 MB with zero conversion overhead.
         </p>
       </div>
 

@@ -9,11 +9,11 @@ import { ExpiredNotice } from './ExpiredNotice';
 import { ConsumedNotice } from './ConsumedNotice';
 
 interface DownloadPageProps {
-  token: string;
+  shareCode: string;
   onGoHome: () => void;
 }
 
-export const DownloadPage: React.FC<DownloadPageProps> = ({ token, onGoHome }) => {
+export const DownloadPage: React.FC<DownloadPageProps> = ({ shareCode, onGoHome }) => {
   const [status, setStatus] = useState<DownloadScreenStatus>('loading');
   const [metadata, setMetadata] = useState<PublicFileMetadata | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
@@ -27,7 +27,7 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ token, onGoHome }) =
     async function loadMetadata() {
       try {
         setStatus('loading');
-        const data = await fileService.getFileMetadata(token);
+        const data = await fileService.getFileMetadata(shareCode);
         if (!isMounted) return;
 
         setMetadata(data);
@@ -52,7 +52,7 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ token, onGoHome }) =
     return () => {
       isMounted = false;
     };
-  }, [token]);
+  }, [shareCode]);
 
   // Live expiration timer countdown
   useEffect(() => {
@@ -79,7 +79,7 @@ export const DownloadPage: React.FC<DownloadPageProps> = ({ token, onGoHome }) =
       setStatus('downloading');
       setDownloadProgress(10);
 
-      const result = await fileService.downloadFile(token, (progress) => {
+      const result = await fileService.downloadFile(shareCode, (progress) => {
         setDownloadProgress(progress);
       });
 

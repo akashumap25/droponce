@@ -34,7 +34,7 @@ export const UploadDropzone: React.FC<UploadDropzoneProps> = ({
 
   const validateAndSelectFile = (file: File) => {
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      showToast(`File size (${formatBytes(file.size)}) exceeds 100 MB limit`, 'error');
+      showToast(`File size (${formatBytes(file.size)}) exceeds 50 MB limit`, 'error');
       return;
     }
     if (file.size === 0) {

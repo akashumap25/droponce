@@ -14,7 +14,7 @@ import type { UploadProgressState, UploadResult } from './types/file';
 import { MAX_SESSION_QUOTA_BYTES } from './utils/mime';
 
 const MainContent: React.FC = () => {
-  const [downloadToken, setDownloadToken] = useState<string | null>(null);
+  const [shareCode, setShareCode] = useState<string | null>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -32,16 +32,16 @@ const MainContent: React.FC = () => {
   const updateRouteFromLocation = () => {
     const path = window.location.pathname;
 
-    const sMatch = path.match(/^\/s\/([a-zA-Z0-9_-]+)/);
+    const sMatch = path.match(/^\/s\/([A-Za-z0-9]{10})$/);
     if (sMatch && sMatch[1]) {
-      setDownloadToken(sMatch[1]);
-    } else {
+      setShareCode(sMatch[1]);
+        } else {
       const params = new URLSearchParams(window.location.search);
       const tokenParam = params.get('token');
       if (tokenParam) {
-        setDownloadToken(tokenParam);
+        setShareCode(tokenParam);
       } else {
-        setDownloadToken(null);
+        setShareCode(null);
       }
     }
   };
@@ -107,15 +107,16 @@ const MainContent: React.FC = () => {
   };
 
   const handleCancelUpload = () => {
-    handleResetUpload();
-    showToast('Upload cancelled', 'info');
-  };
+  fileService.cancelUpload();
+  handleResetUpload();
+  showToast('Upload cancelled', 'info');
+};
 
-  const navigateToDownload = (token: string) => {
-    window.history.pushState({}, '', `/s/${token}`);
-    updateRouteFromLocation();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const navigateToDownload = (shareCode: string) => {
+  window.history.pushState({}, '', `/s/${shareCode}`);
+  updateRouteFromLocation();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
 
   const navigateToHome = () => {
     window.history.pushState({}, '', '/');
@@ -140,11 +141,11 @@ const MainContent: React.FC = () => {
         muted
         loop
         playsInline
-        preload="auto"
+        preload="metadata"
         aria-hidden="true"
       >
         <source
-          src="\public\video\hero-background.mp4.mp4"
+          src="/video/hero-background.mp4.mp4"
           type="video/mp4"
         />
       </video>
@@ -168,10 +169,10 @@ const MainContent: React.FC = () => {
 
       <main className="flex-1">
 
-        {downloadToken ? (
+        {shareCode ? (
 
           <DownloadPage
-            token={downloadToken}
+            shareCode={shareCode}
             onGoHome={navigateToHome}
           />
 

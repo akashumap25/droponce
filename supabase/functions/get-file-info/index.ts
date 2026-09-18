@@ -1,67 +1,69 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { corsHeaders } from "../_shared/cors.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.116.0";
+import { getCorsHeaders } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  parseShareCode,
+  ValidationError,
+} from "../_shared/validation.ts";
 
 serve(async (req) => {
+  const origin = req.headers.get("Origin");
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", {
+      status: 200,
+      headers: corsHeaders,
+    });
+  }
+
+  if (req.method !== "GET") {
+    return errorResponse("Method not allowed.", 405, corsHeaders);
   }
 
   try {
-    const url = new URL(req.url);
-    const token = url.searchParams.get("token");
+    const shareCode = parseShareCode(
+      new URL(req.url).searchParams.get("shareCode"),
+    );
 
-    if (!token) {
-      return new Response(JSON.stringify({ error: "Missing token parameter." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Compute SHA-256 hash of token
-    const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(token));
-    const tokenHash = Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, "0")).join("");
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      {
+        auth: {
+          persistSession: false,
+        },
+      },
+    );
 
     const { data: file, error } = await supabase
       .from("files")
-      .select("original_filename, sanitized_filename, mime_type, size_bytes, expires_at, is_one_time, status, created_at")
-      .eq("token_hash", tokenHash)
+      .select(
+        "original_filename, sanitized_filename, mime_type, size_bytes, expires_at, is_one_time, status, created_at",
+      )
+      .eq("share_code", shareCode)
       .single();
 
     if (error || !file) {
-      return new Response(JSON.stringify({ error: "This temporary file link does not exist or has been deleted." }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return errorResponse(
+        "This temporary file link does not exist or has been deleted.",
+        404,
+        corsHeaders,
+      );
     }
 
-    const now = Date.now();
-    const isExpired = new Date(file.expires_at).getTime() <= now;
-
-    if (isExpired || file.status === "expired") {
-      return new Response(JSON.stringify({ error: "This temporary link has expired. The file has been permanently deleted." }), {
-        status: 410,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (file.status === "downloaded" && file.is_one_time) {
-      return new Response(JSON.stringify({ error: "This temporary file was configured for one-time use and has already been downloaded." }), {
-        status: 410,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (file.status !== "active") {
-      return new Response(JSON.stringify({ error: "This file is no longer available." }), {
-        status: 410,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (
+      file.status !== "active" ||
+      new Date(file.expires_at).getTime() <= Date.now()
+    ) {
+      return errorResponse(
+        file.status === "downloaded" && file.is_one_time
+          ? "This temporary file was configured for one-time use and has already been downloaded."
+          : "This temporary link is no longer available.",
+        410,
+        corsHeaders,
+      );
     }
 
     return new Response(
@@ -75,13 +77,25 @@ serve(async (req) => {
         status: file.status,
         createdAt: file.created_at,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      },
     );
-  } catch (err: any) {
-    console.error("Get file info error:", err);
-    return new Response(JSON.stringify({ error: err.message || "Failed to retrieve file info" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return errorResponse(error.message, 400, corsHeaders);
+    }
+
+    console.error("Get file info error:", error);
+
+    return errorResponse(
+      "Unable to retrieve file information.",
+      500,
+      corsHeaders,
+    );
   }
 });

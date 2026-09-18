@@ -94,7 +94,7 @@ export const StorytellingSection: React.FC = () => {
       number: '02',
       tag: 'SECURE',
       title: 'A private link, not a permanent address.',
-      copy: 'Your file is stored separately from the public interface in private Cloudflare R2 storage and accessed strictly through a unique temporary 256-bit token.',
+      copy: 'Your file is stored separately from the public interface in private Supabase Storage and accessed strictly through a unique temporary 256-bit token.',
       icon: Key,
       renderVisual: () => (
         <div className="relative w-full h-64 rounded-2xl bg-[#0E0E12] border border-white/10 p-6 flex flex-col items-center justify-center overflow-hidden">
@@ -163,7 +163,7 @@ export const StorytellingSection: React.FC = () => {
       number: '04',
       tag: 'DISAPPEAR',
       title: "Then it's gone.",
-      copy: 'Temporary files automatically become unavailable after their expiration period or immediately after their 1st download. Data is expunged from storage vaults with zero recovery trace.',
+      copy: 'Temporary files become unavailable after their expiration period or after their first one-time authorization. The storage object is automatically cleaned up.',
       icon: Flame,
       renderVisual: () => (
         <div className="relative w-full h-64 rounded-2xl bg-[#0E0E12] border border-white/10 p-6 flex flex-col items-center justify-center overflow-hidden">

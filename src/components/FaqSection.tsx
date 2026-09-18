@@ -12,11 +12,11 @@ export const FaqSection: React.FC = () => {
   const faqs: FaqItem[] = [
     {
       q: 'What happens when a link expires or is consumed?',
-      a: 'The file is completely removed from our private Cloudflare R2 object storage, and its database record is marked as expired or deleted. Any subsequent attempts to access the URL will return an unrecoverable "Link Expired" response.',
+      a: 'The file is removed from private Supabase Storage and its database record is marked deleted. Any later attempt to use the link is denied.',
     },
     {
       q: 'How does the single-use ("self-destruct") download work?',
-      a: 'When enabled, the file can be downloaded exactly once. The moment the recipient initiates and successfully receives the download stream, an atomic database transaction consumes the token and immediately dispatches a deletion request to the storage bucket.',
+      a: 'When enabled, the file can be authorized exactly once. The authorization is atomic, and the object is removed after its short signed-download URL expires.',
     },
     {
       q: 'Can anyone search, index, or guess my link?',

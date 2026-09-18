@@ -1,73 +1,46 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.116.0";
 import { corsHeaders } from "../_shared/cors.ts";
+import { MAX_FILE_SIZE_BYTES } from "../_shared/constants.ts";
+import { getStorageObjectMetadata } from "../_shared/storage.ts";
+import { errorResponse, hashToken, parseFilename, parseIsOneTime, parseMimeType, parseSessionId, parseSizeBytes, parseStorageKey, parseToken, requireObject, ValidationError } from "../_shared/validation.ts";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return errorResponse("Method not allowed.", 405, corsHeaders);
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { storageKey, token, filename, sizeBytes, mimeType, isOneTime, sessionId } = await req.json();
-
-    if (!storageKey || !token || !filename || !sizeBytes || !sessionId) {
-      return new Response(JSON.stringify({ error: "Missing required metadata parameters." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const body = requireObject(await req.json());
+    const storageKey = parseStorageKey(body.storageKey);
+    const token = parseToken(body.token);
+    const filename = parseFilename(body.filename);
+    const sizeBytes = parseSizeBytes(body.sizeBytes);
+    const mimeType = parseMimeType(body.mimeType);
+    const isOneTime = parseIsOneTime(body.isOneTime);
+    const sessionId = parseSessionId(body.sessionId);
+    const object = await getStorageObjectMetadata(storageKey);
+    if (object.sizeBytes > MAX_FILE_SIZE_BYTES || object.sizeBytes !== sizeBytes || object.mimeType !== mimeType) {
+      return errorResponse("Uploaded object does not match its authorization.", 409, corsHeaders);
     }
 
-    // Compute token hash to store in database (never store raw token)
-    const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(token));
-    const tokenHash = Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, "0")).join("");
-
-    // Sanitize filename
-    const sanitized = filename
-      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
-      .replace(/\.{2,}/g, ".")
-      .trim()
-      .slice(0, 255) || "unnamed_file";
-
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-    const { error: insertError } = await supabase.from("files").insert({
-      token_hash: tokenHash,
-      original_filename: filename,
-      sanitized_filename: sanitized,
-      storage_key: storageKey,
-      mime_type: mimeType || "application/octet-stream",
-      size_bytes: sizeBytes,
-      session_id: sessionId,
-      is_one_time: Boolean(isOneTime),
-      status: "active",
-      expires_at: expiresAt,
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const { data, error } = await supabase.rpc("finalize_pending_upload", {
+      p_token_hash: await hashToken(token), p_storage_key: storageKey, p_original_filename: filename,
+      p_mime_type: mimeType, p_size_bytes: sizeBytes, p_session_id: sessionId, p_is_one_time: isOneTime,
+      p_actual_size_bytes: object.sizeBytes, p_actual_mime_type: object.mimeType,
     });
-
-    if (insertError) {
-      console.error("Database insert error:", insertError);
-      return new Response(JSON.stringify({ error: "Failed to persist file record." }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (error) {
+      console.error("Pending upload finalization failed:", error);
+      return errorResponse("Unable to finalize upload.", 500, corsHeaders);
     }
+    if (!data?.length) return errorResponse("Upload authorization is expired, invalid, or already completed.", 409, corsHeaders);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        expiresAt,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err: any) {
-    console.error("Complete upload error:", err);
-    return new Response(JSON.stringify({ error: err.message || "Failed to complete upload" }), {
-      status: 500,
+    return new Response(JSON.stringify({ success: true, expiresAt: data[0].expires_at }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  } catch (error) {
+    if (error instanceof ValidationError) return errorResponse(error.message, error.message.includes("50 MB") ? 413 : 400, corsHeaders);
+    console.error("Complete upload error:", error);
+    return errorResponse("Unable to finalize upload.", 500, corsHeaders);
   }
 });

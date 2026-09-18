@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import type { FileService } from './types';
 import type { PublicFileMetadata, UploadResult, UploadStep } from '../types/file';
 import { getOrCreateSessionId } from '../utils/crypto';
@@ -8,6 +9,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `${SUPABASE_URL}/functions/v1`;
 
 export class SupabaseFileService implements FileService {
+  private uploadCancelled = false;
   private getHeaders(): HeadersInit {
     return {
       'Content-Type': 'application/json',
@@ -34,12 +36,15 @@ export class SupabaseFileService implements FileService {
       return { usedBytes: 0, maxBytes: MAX_SESSION_QUOTA_BYTES };
     }
   }
-
+  cancelUpload(): void {
+    this.uploadCancelled = true;
+  }
   async uploadFile(
     file: File,
     isOneTime: boolean,
     onProgress: (step: UploadStep, progress: number, message: string) => void
   ): Promise<UploadResult> {
+    this.uploadCancelled = false;
     if (file.size > MAX_FILE_SIZE_BYTES) {
       throw new Error(`File exceeds the maximum allowed size of 50 MB.`);
     }
@@ -65,36 +70,24 @@ export class SupabaseFileService implements FileService {
     }
 
     const initData = await initRes.json();
-    const { uploadUrl, token, storageKey, expiresAt } = initData;
+    const { uploadToken, token, shareCode, storageKey } = initData;
 
     onProgress('uploading', 40, 'Uploading to encrypted private vault...');
 
-    // Upload directly to Supabase Storage via signed upload URL using XMLHttpRequest for fine-grained progress
-    await new Promise<void>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', uploadUrl, true);
-      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const percent = 40 + Math.round((e.loaded / e.total) * 45); // 40% to 85%
-          onProgress('uploading', percent, `Uploading securely... ${Math.round((e.loaded / e.total) * 100)}%`);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
-        } else {
-          reject(new Error(`Storage transfer failed with status ${xhr.status}`));
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('Network error during file transfer to storage vault.'));
-      xhr.send(file);
+    const storage = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
     });
+    const { error: uploadError } = await storage.storage
+      .from('droponce-files')
+      .uploadToSignedUrl(storageKey, uploadToken, file, { contentType: file.type || 'application/octet-stream' });
+    if (uploadError) throw new Error('Storage transfer failed.');
+    onProgress('uploading', 85, 'Upload complete. Verifying file...');
 
-    onProgress('finalizing', 90, 'Verifying checksum and creating secure link...');
+    if (this.uploadCancelled) {
+      throw new Error('Upload cancelled.');
+    }
+
+    onProgress('finalizing', 90, 'Verifying file and creating secure link...');
 
     const completeRes = await fetch(`${API_BASE_URL}/complete-upload`, {
       method: 'POST',
@@ -115,24 +108,29 @@ export class SupabaseFileService implements FileService {
       throw new Error(err.error || 'Finalization error.');
     }
 
+    const completeData = await completeRes.json();
     onProgress('success', 100, 'Secure temporary link generated.');
 
-    const shareUrl = `${window.location.origin}/s/${token}`;
+    const shareUrl = `${window.location.origin}/s/${shareCode}`;
     return {
-      token,
-      shareUrl,
-      expiresAt,
-      isOneTime,
-      filename: file.name,
-      sizeBytes: file.size,
-      mimeType: file.type || 'application/octet-stream',
-    };
+  token,
+  shareCode,
+  shareUrl,
+  expiresAt: completeData.expiresAt,
+  isOneTime,
+  filename: file.name,
+  sizeBytes: file.size,
+  mimeType: file.type || 'application/octet-stream',
+};
   }
 
-  async getFileMetadata(token: string): Promise<PublicFileMetadata> {
-    const res = await fetch(`${API_BASE_URL}/get-file-info?token=${encodeURIComponent(token)}`, {
+  async getFileMetadata(shareCode: string): Promise<PublicFileMetadata> {
+  const res = await fetch(
+    `${API_BASE_URL}/get-file-info?shareCode=${encodeURIComponent(shareCode)}`,
+    {
       headers: this.getHeaders(),
-    });
+    }
+  );
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'File not found or expired' }));
@@ -143,7 +141,7 @@ export class SupabaseFileService implements FileService {
   }
 
   async downloadFile(
-    token: string,
+    shareCode: string,
     onProgress?: (progress: number) => void
   ): Promise<{ blob: Blob; filename: string; mimeType: string }> {
     if (onProgress) onProgress(15);
@@ -151,7 +149,7 @@ export class SupabaseFileService implements FileService {
     const res = await fetch(`${API_BASE_URL}/download-file`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ shareCode }),
     });
 
     if (!res.ok) {

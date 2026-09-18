@@ -46,6 +46,7 @@ export interface UploadProgressState {
 
 export interface UploadResult {
   token: string;
+  shareCode: string;
   shareUrl: string;
   expiresAt: string;
   isOneTime: boolean;
@@ -53,7 +54,6 @@ export interface UploadResult {
   sizeBytes: number;
   mimeType: string;
 }
-
 export type DownloadScreenStatus = 
   | 'loading'
   | 'ready'

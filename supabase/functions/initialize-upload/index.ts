@@ -1,86 +1,62 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.116.0";
 import { corsHeaders } from "../_shared/cors.ts";
+import { PENDING_UPLOAD_LIFETIME_SECONDS, UPLOAD_PREFIX } from "../_shared/constants.ts";
 import { createSignedUploadUrl } from "../_shared/storage.ts";
+import { errorResponse, hashToken, parseFilename, parseIsOneTime, parseMimeType, parseSessionId, parseSizeBytes, requireObject, sanitizeFilename, ValidationError } from "../_shared/validation.ts";
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB (Supabase Storage free tier)
-const MAX_SESSION_QUOTA = 200 * 1024 * 1024; // 200 MB session quota
+function generateShareCode(length = 10): string {
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789";
 
+  const randomBytes = crypto.getRandomValues(new Uint8Array(length));
+
+  return Array.from(
+    randomBytes,
+    (byte) => alphabet[byte % alphabet.length],
+  ).join("");
+}
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return errorResponse("Method not allowed.", 405, corsHeaders);
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false },
+    const body = requireObject(await req.json());
+    const filename = parseFilename(body.filename);
+    const sizeBytes = parseSizeBytes(body.sizeBytes);
+    const mimeType = parseMimeType(body.mimeType);
+    const isOneTime = parseIsOneTime(body.isOneTime);
+    const sessionId = parseSessionId(body.sessionId);
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const shareCode = generateShareCode();
+    const storageKey = `${UPLOAD_PREFIX}/${crypto.randomUUID()}`;
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+
+    const { data: pending, error: pendingError } = await supabase.rpc("initialize_pending_upload", {
+      p_token_hash: await hashToken(token), p_storage_key: storageKey, p_original_filename: filename,
+      p_sanitized_filename: sanitizeFilename(filename), p_mime_type: mimeType, p_size_bytes: sizeBytes,
+      p_session_id: sessionId, p_is_one_time: isOneTime,
+      p_share_code: shareCode,
     });
-
-    const { filename, sizeBytes, mimeType, isOneTime, sessionId } = await req.json();
-
-    if (!filename || !sizeBytes || !sessionId) {
-      return new Response(JSON.stringify({ error: "Missing required upload parameters." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (pendingError) {
+      console.error("Pending upload reservation failed:", pendingError);
+      return errorResponse("Unable to authorize upload.", 500, corsHeaders);
     }
+    if (!pending?.length) return errorResponse("Session quota exceeded (100 MB maximum).", 429, corsHeaders);
 
-    if (sizeBytes > MAX_FILE_SIZE) {
-      return new Response(JSON.stringify({ error: "File exceeds the 50 MB maximum size limit." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    try {
+      const upload = await createSignedUploadUrl(storageKey);
+      return new Response(JSON.stringify({
+        uploadToken: upload.token, storageKey: upload.path, token, shareCode,
+        uploadExpiresAt: new Date(Date.now() + PENDING_UPLOAD_LIFETIME_SECONDS * 1000).toISOString(),
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    } catch (error) {
+      console.error("Signed upload authorization failed:", error);
+      return errorResponse("Unable to authorize upload.", 500, corsHeaders);
     }
-
-    // Check session quota from database
-    const { data: usedBytes, error: quotaError } = await supabase.rpc("get_session_active_bytes", {
-      check_session_id: sessionId,
-    });
-
-    if (quotaError) {
-      console.error("Quota check error:", quotaError);
-    } else if ((usedBytes || 0) + sizeBytes > MAX_SESSION_QUOTA) {
-      return new Response(
-        JSON.stringify({ error: "Session quota exceeded (200 MB max). Wait for existing files to expire or be downloaded." }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Generate 256-bit CSPRNG token (never stored raw)
-    const tokenBytes = new Uint8Array(32);
-    crypto.getRandomValues(tokenBytes);
-    const token = Array.from(tokenBytes, (b) => ("0" + b.toString(16)).slice(-2)).join("");
-
-    // Compute SHA-256 hash of token — only the hash goes to the database
-    const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(token));
-    const tokenHash = Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, "0")).join("");
-
-    // Isolated storage path (UUID prevents enumeration)
-    const storagePath = `temporary-files/${crypto.randomUUID()}`;
-
-    // Generate Supabase Storage signed upload URL (15 minute validity)
-    const uploadUrl = await createSignedUploadUrl(storagePath);
-
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-    return new Response(
-      JSON.stringify({
-        uploadUrl,
-        token,
-        tokenHash,
-        storageKey: storagePath,
-        expiresAt,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err: any) {
-    console.error("Initialize upload error:", err);
-    return new Response(JSON.stringify({ error: err.message || "Failed to initialize upload" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  } catch (error) {
+    if (error instanceof ValidationError) return errorResponse(error.message, error.message.includes("50 MB") ? 413 : 400, corsHeaders);
+    console.error("Initialize upload error:", error);
+    return errorResponse("Failed to initialize upload.", 500, corsHeaders);
   }
 });

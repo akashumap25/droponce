@@ -16,12 +16,12 @@ export const SecuritySection: React.FC = () => {
     {
       icon: Trash2,
       title: 'Atomic One-Time Invalidation',
-      desc: 'Single-use downloads are consumed atomically via PostgreSQL transactions, preventing race conditions. The underlying R2 object is purged immediately.',
+      desc: 'Single-use downloads are authorized atomically via PostgreSQL, preventing concurrent access. The Supabase Storage object is purged after its short signed URL expires.',
     },
     {
       icon: ShieldOff,
       title: 'Private Isolated Bucket',
-      desc: 'Cloudflare R2 storage is private and never exposed to the public internet. Downloads occur strictly through backend-authorized presigned pipes.',
+      desc: 'Supabase Storage is private and never exposed for direct public access. Downloads occur only through backend-authorized signed URLs.',
     },
     {
       icon: Server,

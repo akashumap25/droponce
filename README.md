@@ -1,133 +1,39 @@
-# DROPONCE — Hyper-Premium Secure Temporary File-Sharing Platform
+# DROPONCE
 
-> **Upload. Share. Gone.**  
-> *Private file sharing, without the permanent footprint.*
+Upload. Share. Gone.
 
-DROPONCE is an ultra-premium, Apple-level temporary file-sharing web application built with **React**, **Vite**, **Tailwind CSS**, **Supabase PostgreSQL**, **Supabase Edge Functions**, and **Cloudflare R2**.
+DROPONCE is an anonymous, temporary file-sharing application built with React, Vite, Supabase Edge Functions, PostgreSQL, and private Supabase Storage.
 
----
+## Security model
 
-## ⚡ Highlights
+- Storage uses the private `droponce-files` Supabase Storage bucket. Cloudflare R2 is not used.
+- Files are limited to 50 MB and anonymous sessions have a server-enforced 100 MB active/reserved quota.
+- A finalized file expires 24 hours after finalization.
+- Share links use a server-generated 256-bit random token. PostgreSQL stores only `SHA-256(token)`.
+- Upload metadata, quota reservations, expiration, and storage paths are server-owned.
+- Downloads are authorized by Edge Functions and return a signed URL valid for at most 60 seconds.
+- One-time downloads are atomically authorized once; cleanup removes the physical object after the signed URL grace period.
+- Incomplete uploads expire after 15 minutes and are cleaned from Storage and PostgreSQL.
 
-- **Awwwards & Apple-Level Aesthetic**: Deep monochromatic dark palette (`#050505`), kinetic reactive cursor radial glow, smooth dropzone animations, and particle dissolution storytelling.
-- **True Ephemeral Lifecycle**: Files are automatically destroyed after **24 hours** or immediately upon **first successful download** (atomic single-use consumption).
-- **Zero-Knowledge Security Design**: Generates 256-bit unguessable CSPRNG tokens (`crypto.getRandomValues`). The server hashes tokens using **SHA-256** prior to database persistence, ensuring database read leaks cannot compromise active links.
-- **Private Isolated Storage**: Cloudflare R2 bucket is private and never exposed to the public internet. Transfers operate strictly through time-limited presigned URLs.
-- **Anonymous Session Quota**: 100 MB per user session, authoritative on the server, paired with an elegant client quota meter.
-- **Dual Mode Architecture**: Operates out-of-the-box with high-fidelity in-browser Web Crypto + IndexedDB simulation for instant local testing, and connects seamlessly to Supabase and Cloudflare R2 for production deployment.
+The client has no service-role credential. Only public `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and optionally `VITE_API_BASE_URL` belong in the frontend environment.
 
----
-
-## 🏛️ Architecture Overview
-
-```
-                          [ Client Browser ]
-                                   │
-                    ┌──────────────┴──────────────┐
-                    ▼                             ▼
-       [ Landing / Upload Hero ]       [ Download Route /s/:token ]
-                    │                             │
-                    ▼                             ▼
-           [ FileService Layer ]        [ FileService Layer ]
-                    │                             │
-      (VITE_USE_MOCK_API=false)        (VITE_USE_MOCK_API=true)
-                    │                             │
-                    ▼                             ▼
-     [ Supabase Edge Functions ]       [ In-Browser Simulation ]
-        /                 \             • Web Crypto 256-bit CSPRNG
-       /                   \            • SHA-256 Hashing Engine
-      ▼                     ▼           • IndexedDB Binary Store
-[ Supabase PostgreSQL ]  [ Cloudflare R2 ]
-(Metadata & Hash Index)  (Private Objects)
-```
-
----
-
-## 🚀 Quick Start (Local Development)
-
-The application starts immediately with zero external credential requirements thanks to its built-in client simulation engine.
+## Local development
 
 ```bash
-# 1. Navigate to project directory
-cd droponce
-
-# 2. Install dependencies (if not already installed)
-npm install
-
-# 3. Start development server
-npm run dev
-
-# 4. Build production bundle
+npm ci
 npm run build
+npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+The default UI can use its local mock mode. Set `VITE_USE_MOCK_API=false` and configure the public Supabase variables to use the deployed Edge Functions.
 
----
+## Backend lifecycle
 
-## 🌐 Production Deployment Guide
+```text
+initialize-upload -> pending_uploads reservation -> signed upload
+  -> complete-upload verifies Storage metadata -> files (active, 24 hours)
+  -> download-file signs then atomically authorizes -> downloaded (one-time only)
+  -> cleanup deletes Storage first -> database row deleted
+```
 
-### 1. Cloudflare R2 Setup
-
-1. Sign in to your **Cloudflare Dashboard** → **R2 Object Storage**.
-2. Create a private bucket named: `droponce-files`.
-3. In bucket settings, ensure **Public Access** remains **Disabled**.
-4. Go to **Manage R2 API Tokens** and create an API token with **Object Read & Write** permissions for `droponce-files`.
-5. Note down:
-   - `R2_ACCOUNT_ID`
-   - `R2_ACCESS_KEY_ID`
-   - `R2_SECRET_ACCESS_KEY`
-   - `R2_BUCKET_NAME` (`droponce-files`)
-
-### 2. Supabase Setup
-
-1. Create a project at [supabase.com](https://supabase.com).
-2. Go to **SQL Editor** in Supabase and run the migration file located at:
-   `supabase/migrations/20260910000000_create_files_schema.sql`
-3. Set your Supabase Edge Function secrets via the Supabase CLI:
-   ```bash
-   supabase secrets set R2_ACCOUNT_ID="your-account-id" \
-                        R2_ACCESS_KEY_ID="your-access-key-id" \
-                        R2_SECRET_ACCESS_KEY="your-secret-access-key" \
-                        R2_BUCKET_NAME="droponce-files"
-   ```
-4. Deploy the Edge Functions:
-   ```bash
-   supabase functions deploy initialize-upload
-   supabase functions deploy complete-upload
-   supabase functions deploy get-file-info
-   supabase functions deploy download-file
-   supabase functions deploy cleanup-expired
-   supabase functions deploy get-session-quota
-   ```
-
-### 3. Frontend Deployment (Vercel / Cloudflare Pages)
-
-1. Set `.env` (or environment variables in your deployment dashboard):
-   ```env
-   VITE_USE_MOCK_API=false
-   VITE_SUPABASE_URL=https://<your-project-id>.supabase.co
-   VITE_SUPABASE_ANON_KEY=<your-anon-key>
-   VITE_API_BASE_URL=https://<your-project-id>.supabase.co/functions/v1
-   ```
-2. Build command: `npm run build`
-3. Output directory: `dist`
-
----
-
-## 🔐 Security & Threat Model
-
-| Vector | Mitigation in DROPONCE |
-| :--- | :--- |
-| **Token Guessing / Enumeration** | 256-bit cryptographically secure random values generated with CSPRNG. |
-| **Database Compromise** | Raw tokens are **never stored** in PostgreSQL. Only irreversible `SHA-256(token)` is indexed. |
-| **Direct S3 Bucket Scraping** | Cloudflare R2 bucket is strictly private. URLs are signed server-side with 60s validity. |
-| **Single-Use Race Conditions** | PostgreSQL atomic conditional update with `WHERE status = 'active' RETURNING ...`. Only 1 thread can succeed. |
-| **Client-Side Tampering** | Browser state is treated as visual feedback only; expiration and quota are strictly verified server-side. |
-| **Denial of Service** | Strict 100 MB per-file and per-session quotas calculated server-side from active records. |
-
----
-
-## 📄 License
-
-MIT © 2026 DROPONCE. Designed and engineered for privacy.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for migration, secret, function, and scheduled-cleanup setup.

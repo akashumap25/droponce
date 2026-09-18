@@ -2,8 +2,8 @@
  * Allowed MIME types, extensions and category mapping for DROPONCE.
  */
 
-export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB (Supabase Storage free tier)
-export const MAX_SESSION_QUOTA_BYTES = 150 * 1024 * 1024; // 150 MB session quota
+export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+export const MAX_SESSION_QUOTA_BYTES = 100 * 1024 * 1024;
 
 export interface FileTypeInfo {
   label: string;

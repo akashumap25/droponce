@@ -7,7 +7,17 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Supabase CLI temporary files
+supabase/.temp/
+
+# Temporary editor files
+**/tempCodeRunnerFile.*
+
 node_modules
+# Environment variables
+.env
+.env.*
+!.env.example
 dist
 dist-ssr
 *.local

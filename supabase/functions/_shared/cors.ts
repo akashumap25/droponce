@@ -1,6 +1,7 @@
 // Shared CORS headers for Supabase Edge Functions with production origin security
 
-const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN") || "*";
+// Functions use this static header; configure one canonical production origin.
+const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN")?.split(",")[0].trim() || "*";
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': allowedOrigin,

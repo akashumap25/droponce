@@ -43,6 +43,10 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export class MockFileService implements FileService {
+  cancelUpload(): void {
+    // Mock uploads are simulated synchronously and have no network request to abort.
+  }
+
   async getSessionQuota(): Promise<{ usedBytes: number; maxBytes: number }> {
     const db = await openDB();
     const sessionId = getOrCreateSessionId();
@@ -81,7 +85,7 @@ export class MockFileService implements FileService {
   ): Promise<UploadResult> {
     // 1. Client & Server size validation
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      throw new Error(`File exceeds the maximum allowed size of 100 MB (${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+      throw new Error(`File exceeds the maximum allowed size of 50 MB (${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
     }
 
     if (file.size === 0) {
@@ -104,6 +108,7 @@ export class MockFileService implements FileService {
     // Step: Encrypting
     onProgress('encrypting', 35, 'Generating cryptographic 256-bit token & hash...');
     const rawToken = generateSecureToken();
+    const shareCode = rawToken.slice(0, 10);
     const tokenHash = await sha256Hex(rawToken);
     await new Promise(r => setTimeout(r, 500));
 
@@ -150,10 +155,11 @@ export class MockFileService implements FileService {
     onProgress('success', 100, 'Secure temporary link generated.');
 
     // Build public shareable URL using current window origin
-    const shareUrl = `${window.location.origin}/s/${rawToken}`;
+    const shareUrl = `${window.location.origin}/s/${shareCode}`;
 
     return {
       token: rawToken,
+      shareCode,
       shareUrl,
       expiresAt,
       isOneTime,

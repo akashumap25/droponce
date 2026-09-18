@@ -15,4 +15,5 @@ export interface FileService {
   ): Promise<{ blob: Blob; filename: string; mimeType: string }>;
 
   getSessionQuota(): Promise<{ usedBytes: number; maxBytes: number }>;
+  cancelUpload(): void;
 }
