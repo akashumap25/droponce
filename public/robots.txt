@@ -1,4 +1,4 @@
-User-agent: *
+﻿User-agent: *
 Disallow: /s/
 Disallow: /api/
 Disallow: /functions/
@@ -9,3 +9,5 @@ Disallow: /s/
 
 User-agent: Bingbot
 Disallow: /s/
+
+Sitemap: https://droponce-iota.vercel.app/sitemap.xml
